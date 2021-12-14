@@ -187,3 +187,54 @@
 
 1.完成命令字“op_set_city_defender”,"op_set_cowboy_slot"
 
+12-13
+
+牛仔的展示
+
+1. 在展示界面 城防界面 牛仔界面三个地方使用到的表： svr_city_defender svr_cowboy_info
+
+svr_cowboy_info用到的数据：
+
+​	tuple：CTpCowboy->m_jsnCowboy_list遍历填充"cowboys"字段
+
+​				CTpCowboy->m_jsnChest_next_free_time填充"chestNextFreeTime"字段
+
+​				CTpCowboy->m_jsnCowboy_slot遍历填充"cowboySlot"字段
+
+
+
+svr_city_defender 用到的数据：
+
+​		tuple：m_dbUser.m_ctpCowboy.m_jsnCity_defender遍历填充"cardList"字段
+
+​					pstSession->m_objUserInfo.m_dbUser.m_ctpCowboy.m_ddwPlan_id填充"guardPlanId"字段
+
+2. CProcessPlayer::GenProcedure中CCommonHandle::HandleAfter的CBufferBase::ComputeBuffInfo
+
+   在handlebefore和handle都有进行了`CBufferBase::ComputeBuffInfo`计算。
+
+   ![image-20211213153505470](../photo/image-20211213153505470.png)
+
+   是因为在CProcessPlayer::ProcessCmd中可能是执行狂化等影响技能等级，最后影响buff计算的操作。
+
+   
+
+3. m_stPlayerBuffList是存放buff的地方。
+
+   在通用流程的最后一个`pstSession->m_Procedure.push(new DelegateHandler<void>(&CRspProcedure::SendbackRsp)); //send back result`中打包到svr_buff_info。
+
+   CRspProcedure::SendbackRsp
+
+   ->StoreJson(pstSession)
+   
+   ->StoreJson_String(pstSession)/StoreJson_Binary(pstSession)
+   
+   ->pstSession->m_pJsonGen->GenResult(pstSession)/pstSession->m_pJsonGen->GenResult_Pb(pstSession)**PB**
+   
+   ->GenDataJson(pstSession, &m_mapPbResult)
+   
+   class CBufferInfoJson继承了抽象类CBaseOutput，重载纯虚函数GenDataJson。在通用流程中根据命令字设置的反包类型`pstSession->m_stRspParam.m_ucJsonType`字段`enum EJsonType`来决定动态选择具体实现的方法。
+   
+   在最后output的时候从`pstUser->m_objComInfo.m_stPlayerBuffList.m_astPlayerBuffInfo[dwBuffId]`，
+   
+   存储到svr_buff_info中，
