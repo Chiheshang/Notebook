@@ -1,8 +1,8 @@
 #!/bin/bash
 
-echo "GitAutoPull Starting..."
+echo "GitAutoPull Start"
 git pull origin main
-echo "GitAutoPull Starting..."
+echo "GitAutoPull End"
 
 echo "GitAutoPush Starting..."
 time=$(date "+%Y-%m-%d %H:%M:%S")
@@ -20,4 +20,5 @@ fi
 
 	
 git push origin master
-echo "GitAutoPush Ending..."
+echo "GitAutoPush End"
+read -t 30 -p "请输入提交注释:" msg
