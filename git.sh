@@ -22,4 +22,5 @@ fi
 git push origin main
 echo "GitAutoPush End"
 
-read -t 30 -p "请输入提交注释:" msg
+read -t 30 -p "同步结束" msg
+ss
