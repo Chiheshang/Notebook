@@ -21,4 +21,4 @@ fi
 	
 git push origin master
 echo "GitAutoPush End"
-read -t 30 -p "请输入提交注释:" msg
+pause 

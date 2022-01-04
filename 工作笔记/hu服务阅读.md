@@ -217,8 +217,6 @@ svr_city_defender 用到的数据：
 
    是因为在CProcessPlayer::ProcessCmd中可能是执行狂化等影响技能等级，最后影响buff计算的操作。
 
-   
-
 3. m_stPlayerBuffList是存放buff的地方。
 
    在通用流程的最后一个`pstSession->m_Procedure.push(new DelegateHandler<void>(&CRspProcedure::SendbackRsp)); //send back result`中打包到svr_buff_info。
@@ -238,3 +236,35 @@ svr_city_defender 用到的数据：
    在最后output的时候从`pstUser->m_objComInfo.m_stPlayerBuffList.m_astPlayerBuffInfo[dwBuffId]`，
    
    存储到svr_buff_info中，
+
+目标:
+
+12-17：阅读服务op-svr
+
+服务功能：拉取当前的活动。
+
+线程模型：网络CSearchNetIO，CQueryNetIO，工作线程：CTaskProcess
+
+ProcessCommand：存放所有请求
+
+`CProcessEventNew::ProcessCmd_AllEventGetNew`:
+
+
+
+在通用流程的最后一个`pstSession->m_Procedure.push(new DelegateHandler<void>(&CRspProcedure::SendbackRsp)); //send back result`中打包到svr_buff_info。
+
+CRspProcedure::SendbackRsp
+
+->StoreJson(pstSession)
+
+->StoreJson_String(pstSession)/StoreJson_Binary(pstSession)
+
+->pstSession->m_pJsonGen->GenResult(pstSession)/pstSession->m_pJsonGen->GenResult_Pb(pstSession)**PB**
+
+->GenDataJson(pstSession, &m_mapPbResult)
+
+class CBufferInfoJson继承了抽象类CBaseOutput，重载纯虚函数GenDataJson。在通用流程中根据命令字设置的反包类型`pstSession->m_stRspParam.m_ucJsonType`字段`enum EJsonType`来决定动态选择具体实现的方法。
+
+在最后output的时候从`pstUser->m_objComInfo.m_stPlayerBuffList.m_astPlayerBuffInfo[dwBuffId]`，
+
+存储到svr_buff_info中，
