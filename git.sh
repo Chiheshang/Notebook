@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 echo "GitAutoPull Start"
 git pull origin main
@@ -21,4 +21,5 @@ fi
 	
 git push origin master
 echo "GitAutoPush End"
-pause 
+
+read -t 30 -p "请输入提交注释:" msg
