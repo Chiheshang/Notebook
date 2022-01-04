@@ -19,7 +19,7 @@ else
 fi
 
 	
-git push origin master
+git push origin main
 echo "GitAutoPush End"
 
 read -t 30 -p "请输入提交注释:" msg
