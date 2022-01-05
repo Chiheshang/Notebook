@@ -54,7 +54,34 @@
 
 8. 增加tips
 
-9. 强行设置不更新，只更新tips和
+9. 强行设置不更新，只更新tips和report
 
 
 
+#### 采集资源
+
+hu命令字：`march_occupy`
+
+1. `ProcessParam`:解析url的7个参数`CostTime，TargetPos，TroopList，DragonJoin，CardList，RssStage`等，设置到session中
+
+2. `GetMapBlockInfo`：获取地块数据
+
+3. `CheckNeedExtraInfo`：如果是失落之地，获取邻接地域
+
+4. `CheckMarchTime`：从mapMap中找到主城的地块，计算主城到目标地块的耗时，看计算的时候和客户端传入的时间是否差值超过0.05
+
+5. `ComputeMarchAction`：校验，判定当前行为是否合法，生成`CTpMarch_action`，判定时间和客户端的时间是否差值在0.05内，更新任务状态，埋点发加分请求
+
+   生成action：`CTpMarch_action* CProcessMarch::GenMarchAction`
+
+   ​	结构体：`SActionMarchParam stMarchParam`，填充：`source user，source city id，source alliance id，target user（这里看是不是野怪军队），target map，march time，dragon，需要消耗资源的，将string转为vector，再转为json然后计算消耗资源，troop（更新剩余军队），如果是侦察，设置侦察等级`
+
+   ​	根据结构体`stMarchParam`生成`tuple ptbMarchAction`：`CActionBase::AddMarchAction` tuple填充数据
+
+6. `GenMarchAfter`：获取生成的`ActionId`，然后根据`ActionId`获取`march ptpMarch`。根据`action`种类来判断是否要破坏和平状态
+
+通用流程：
+
+​	CProcessPushData::PushDataComm->
+
+​	
