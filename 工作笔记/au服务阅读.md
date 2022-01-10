@@ -80,8 +80,12 @@ hu命令字：`march_occupy`
 
 6. `GenMarchAfter`：获取生成的`ActionId`，然后根据`ActionId`获取`march ptpMarch`。根据`action`种类来判断是否要破坏和平状态
 
-通用流程：
+7. 在cmd生成action march后，在updatedata中完成生成action，并下发网络
 
-​	CProcessPushData::PushDataComm->
+   `CDbAction::GenUpdateRequests`
+
+   
+
+   
 
 ​	
