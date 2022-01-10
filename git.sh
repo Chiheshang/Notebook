@@ -19,6 +19,7 @@ else
 fi
 
 	
-git push origin master
+git push origin main
 echo "GitAutoPush End"
-read -t 30 -p "同步结束:" msg
+
+read -t 10 -p "同步结束" msg
