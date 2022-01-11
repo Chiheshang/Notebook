@@ -82,10 +82,49 @@ hu命令字：`march_occupy`
 
 7. 在cmd生成action march后，在updatedata中完成生成action，并下发网络
 
-   `CDbAction::GenUpdateRequests`
+   `CDataBase::UpdateActionData`:判断是否原始cmd是否为`guide_finish`(新手指引);
 
+   `CDbAction::GenUpdateRequests`:
+
+   ```c++
+   class CDbBaseAction : public CDbBase
+   {
+   public:
+       map<TINT64, CTpBuff_action*> m_mapBuff_action;
+       map<TINT64, CTpAl_action*> m_mapAl_action;
+       map<TINT64, CTpMarch_action*> m_mapActive_march_action;
+       map<TINT64, CTpMarch_action*> m_mapPassive_march_action;
+       map<TINT64, CTpMarch_action*> m_mapMap_march_action;
+       map<TINT64, CTpBuff_action*> m_mapEtime_buff_action;
+       map<TINT64, CTpAl_action*> m_mapEtime_al_action;
+       map<TINT64, CTpMarch_action*> m_mapEtime_march_action;
+   public:
+       ...
+   }
+   ```
    
-
+   
+   
+   如果类型为update:
+   
+   1. 拼接json请求头`header`
+   
+   2. action_id=0的跳过。
+   
+   3. 遍历buff，al_action,march_action等
+   
+      更新数据，按照tuple改变状态update，create，delete，来决定具体请求类型。更新：MarchTroopShow，MarchBisShow，GenAlPCacheData。
+   
+   4. 如果生成成功，将jsnReq放入`pstSession->m_vecNetReq`中。
+   
+   如果类型为create:
+   
+   1.  不跳过action_id=0，其他同上。
+   
+   将jsnReq放入`pstSession->m_vecNetReq`中。
+   
+   `CNetProcedure::DoNetOperation`将m_vecNetReq中的请求下发网络。
+   
    
 
 ​	
