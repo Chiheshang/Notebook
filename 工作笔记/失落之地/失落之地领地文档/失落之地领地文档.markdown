@@ -1,0 +1,458 @@
+# 失落之地领地说明文档
+
+## 问题描述
+---
+#### 示意图配色说明
+- 同一色系属于同一联盟，深色-要塞，浅色-完成的有效的旗子，最淡颜色-完成的无效的旗子
+- 同一建筑用不同深浅颜色标注，为强调此地块归属权或有效性
+
+![图片](images/配色示意1.png "蓝色联盟")
+![图片](images/配色示意2.png "橙色联盟")
+
+---
+- 失落之地地图大小850x850，从外到内分4个圈，分为17个区域(普通服的省)，由山脉分隔，如图所示
+
+![图片](images/全图概览.png)
+
+- 初始地图有固定建筑，关卡建筑和资源矿，以联盟为单位玩家可建造联盟堡垒,联盟旗帜,以及占领固定建筑和关卡建筑,玩家之间可以摧毁和争夺地方的各种建筑来争夺领地
+
+- 每个建筑有有效性属性，根据建筑是否和己方有效建筑联通判定，联盟要塞默认有效
+
+![图片](images/领地1.png "联通,旗子有效")
+![图片](images/领地2.png "不联通,旗子无效")
+
+- 除资源矿外，每个建筑拥有自己的领地，领地也有有效性并且可能和其他建筑领地发生重叠。对于领地归属，根据建筑类型、建造状态和建造时间决定每个地块最终归属的建筑。对于领地有效性，根据领地地块是否可联通任意己方有效建筑判定
+
+![图片](images/领地3.png "领地归属,有效")
+
+- 隔断地块的有效性
+
+![图片](images/领地4.png "领地有效,隔断无效")
+![图片](images/领地5.png "领地有效,隔断有效")
+
+- 资源矿有归属，资源矿处于某个有效领地地块时，资源矿属于有效领地所属联盟
+
+![图片](images/资源矿1.png "资源矿归属")
+
+- 每个区域之间有联通关系，关卡建筑判定两个区域之间的联通。如A联盟占领关卡建筑B且有效，关卡建筑B决定1、2区域的联通，那么对于A联盟，1、2区域联通
+
+- 玩家通过争夺领地、建筑，实现基于领地规则之上的战争行为
+
+- 以下列出一些领地场景说明
+
+### 场景示意
+
+
+#### 单联盟建造
+- 普通建造
+- delete 有效变无效
+- create 无效变有效
+
+![图片](images/场景_单联盟.gif "橙色联盟")
+
+#### 多联盟建造
+- 普通建造
+- 地块有重叠
+- 重叠地块（1,2,3,4）上如果有资源矿，地块的的归属权，会引起资源矿归属发生变化
+
+![图片](images/场景_多联盟建造.gif "橙色联盟")
+
+#### 争夺王国建筑，或关卡
+- 单联盟争夺
+- 多联盟争夺
+  - 王国建筑，或关卡被抢占（有效变无效问题）
+  - 王国建筑，或关卡抢占成功（无效变有效问题）
+
+![图片](images/场景_多联盟_争夺.gif "橙色联盟")
+  
+#### 隔断地块
+- 隔断地块，无效变有效
+- 隔断地块，有效变无效
+- 隔断地块上如果有资源矿，地块的有效性，会引起资源矿的有效性发生变化
+  
+![图片](images/场景_隔断地块.gif "橙色联盟")
+
+
+## 概要说明
+---
+- 失落之地可以视为一张850x850格子地图,建筑的有效性判定为是否与有效建筑联通,根据A、B建筑的联通需求可描述为A建筑中心地块到B建筑中心地块是否有一条路径可达。地块有效性则是地块和任意己方有效建筑能联通，则为有效。
+
+- 核心问题变为在一张850x850地图上，解决任意两点间的寻路问题。由于地图超过72万节点，且每个节点都有有效性都可能需要寻路，并且状态是动态变化的，大量功能依赖于此，寻路性能将无法接受
+
+- 优化思路是通过减小问题的规模，分摊复杂度，达到可接受的计算量
+
+- 首先去除全局的850x850地图，将问题分解为区域间联通，建筑间联通，地块间联通的三层联通问题逐一解决
+   - 地块联通：将地块寻路限定在两两建筑之间，只计算两个建筑间地块的联通，为更高层提供建筑级别的相邻关系信息。此计算由于限定在两建筑间，最大计算量与建筑领地大小有关，已知堡垒7x7大小，则最大节点数为7x7x2，100节点以内
+   - 建筑联通：在以上建筑相邻关系基础上，建筑间联通则与建筑个数相关，两联盟最大建筑个数1000内。由于建筑联通这块实际只需要目标建筑是否与己方有效建筑相邻，只需要查看目标建筑相邻建筑状态即可，实际节点个数为个位数，常数时间即可
+   - 区域联通：在建筑之上，还有个区域级别，由关卡建筑控制。由于区域总数为17，任意区域间联通计算量节点数也基本在个位数，常数时间即可
+
+- 通过以上处理解决了建筑有效性问题。
+
+- 对于地块级别的有效性的处理，由于地块基本上分为属于自己的和属于其他建筑的，只需要处理属于自己的地块有效性。根据建造规则，只有少数情况下会出现少量被单独隔开的地块，大部分情况都是与建筑中心直接相连，且有效性和建筑相同，而被隔开的地块有效性则取决于周边有没有己方建筑能直接相连，所以只需要计算出隔开地块的坐标的有效性并记录，其他的坐标有效性取建筑有效性即可，这样可以大量减少内存消耗和计算量
+
+- 在解决了建筑有效性和地块有效性问题后，就可以实现各种建筑操作，战争规则了
+
+- 对于资源矿，功能较为独立，可单独处理
+
+- 总结：通过动态计算建筑中心地块两两之间的地块联通关系，计算建筑有效性，并维护一套建筑联通关系的数据，为上层建筑两两之间联通关系提供支持。地块有效性则通过计算隔断节点后单独计算。区域联通则通过关卡建筑动态维护。
+
+## 解决方案
+---
+### 概念定义
+- 扩散/广搜：广度优先搜索算法
+
+![图片](images/广度优先搜索.gif "定义接壤")
+- 寻路：指定起点A终点B，从A出发尝试寻找一条可通过的路径到达B
+
+![图片](images/寻路.gif "定义接壤")
+
+- 联通：指A通过寻路可达B，即为A与B联通
+
+![图片](images/连通.gif "定义接壤")
+
+- 接壤：指无视归属的情况下，A领地与B领地有边相邻或有重叠
+  - X 与 A,C,D 接壤，与 B 不接壤
+
+![图片](images/定义_接壤.png "定义接壤")
+
+- 隔断：指A建筑领地地块中归属于A，但与A建筑中心不联通的地块
+
+![图片](images/领地4.png "领地有效,隔断无效")
+
+---
+### 寻路模块设计
+- 失落之地中存在3种类型的寻路，包括用于计算地块联通的地块间寻路、计算建筑建联通的建筑间寻路、计算区域间联通的区域间寻路。其中建筑联通由于只需判断目标是否和本联盟建筑相邻关系，可通过地块间寻路结果获取，实际并不需要寻路过程，所以真实存在两种寻路。
+
+- 多种寻路的主要计算过程基本相同，只是H值计算和相邻节点的组成不同，所以把接口抽出，即可用于实现不同寻路
+
+- 其中在寻路过程使用了堆结构，寻路路径节点池化，寻路对象池化优化寻路性能
+
+- 以下为寻路对象接口设计代码
+
+```c++
+class AStar
+{
+public:
+    /// @brief 寻路计算器定制接口
+    class Calculator
+    {
+    public:
+        virtual ~Calculator() {}
+
+        virtual const std::vector<std::pair<int, int> >& GetLinks(int id) = 0;
+        virtual int CalculateH(int id, int end) = 0;
+    };
+
+    AStar();
+    ~AStar();
+
+    void Reset();
+
+    /// @brief A*寻路
+    /// @param start 起点
+    /// @param end 终点
+    /// @param calc 寻路计算器
+    /// @param path 结果路径
+    /// @return 是否寻路成功
+    bool SearchPath(int start, int end, Calculator& calc, std::vector<int> *path = nullptr);
+
+private:
+    struct AStarData_t* m_data;
+};
+```
+- 基于以上,一次寻路操作可以实现为
+```c++
+MapAreaPathCalculator calc(aid, &m_adj_province, &m_buildings);
+AStar *astar = AStarPool::GetInstance()->Create();
+std::vector<TINT32> path;
+if (astar->SearchPath(source_province_id, target_province_id, calc, &path))
+{
+    //find path succ, dosomething
+}
+AStarPool::GetInstance()->Release(astar);
+```
+
+- 对于领地相关功能,提供3种寻路接口外部使用
+```c++
+/// @brief 地块寻路
+TINT32 CalculatePathForWildNoLock(TINT64 spos, TINT64 tpos, const std::set<TINT32> *valid_pos = nullptr, const std::set<TINT32> *pass_pos = nullptr);
+
+/// @brief 区域寻路
+TINT32 CalculatePathForAreaNoLock(TINT64 aid, TINT32 source_province_id, TINT32 target_province_id);
+
+/// @brief 建筑寻路(只是看相邻建筑即可)
+TINT32 CalculatePathForBuildNoLock(TINT64 aid, TINT64 tpos);
+```
+
+- [A*寻路算法更多参考](https://www.cnblogs.com/technology/archive/2011/05/26/2058842.html)
+
+---
+### 领地数据结构设计
+
+- 失落之地建筑通用存储结构,用于联盟堡垒、旗帜、资源矿以及固定建筑和关卡
+```c++
+class CBuildingInfo
+{
+public:
+    TINT64 m_pos;
+    TINT64 m_aid;
+    TINT32 m_ksid; //所属王国
+    TINT32 m_size; //领地大小
+    TINT32 m_valid; //是否有效
+    TINT32 m_is_building; //是否建造中
+    TINT32 m_time; //发起建造或建造完成时间
+    TINT32 m_building_id; //建筑id
+    TINT32 m_wild_class; //建筑class type
+    TBOOL m_is_deleted; //是否删除
+};
+typedef std::shared_ptr<CBuildingInfo> CBuildingInfoPtr;
+```
+
+- pos索引的所有失落之地建筑列表
+```c++
+std::unordered_map<TINT64, CBuildingInfoPtr> m_buildings;
+```
+
+- aid索引的指定联盟失落之地建筑列表
+```c++
+std::unordered_map<TINT64, std::list<CBuildingInfoPtr> > m_al_buildings_list;
+```
+
+- pos地块所关联的建筑,其中SBuildingLess为建筑归属的排序规则,利用set的有序特性将归属建筑按优先级排序,第一个建筑即为此地所归属建筑。建筑状态变化时通过插入删除实现地块归属自动排序
+```c++
+std::unordered_map<TINT64, std::set<CBuildingInfo*, SBuildingLess> > m_pos_building_list;
+```
+
+- pos建筑联通关系的图结构,代表每个pos连接了哪些建筑,如A->B,C,D、B->A,E
+```c++
+std::unordered_map<TINT64, std::list<CBuildingInfo*> > m_adj_graph;
+```
+
+- pos建筑接壤关系的图结构,便于隔断和有效性计算
+```c++
+std::unordered_map<TINT64, std::list<CBuildingInfo*> > m_contact_graph;
+```
+
+- 区域联通关系图结构,key为区域id
+```c++
+struct SProvinceGate
+{
+    TINT64 m_pos; //关联的建筑pos
+    TINT32 m_province_id; //区域id
+};
+std::unordered_map<TINT32, std::vector<SProvinceGate> > m_adj_province;
+```
+
+- pos索引的联盟资源矿建筑
+```c++
+std::unordered_map<TINT64, CBuildingInfoPtr> m_al_res_buildings;
+```
+
+- 隔断坐标pos索引的有效性记录
+```c++
+std::unordered_map<TINT64, TINT32> m_pos_valid;
+```
+
+---
+### 主要建筑功能处理
+#### 建造建筑
+- 在建筑列表和联盟建筑列表(若有)中增加新建筑
+- 在地块归属列表中，对于建筑领地每一个地块pos,增加此建筑，参与领地归属计算
+- 通过对建筑领地范围size+2的地块，去除4个角，获取可能联通的建筑列表，对每个建筑进行寻路，联通则加入建筑联通关系表，同时所有建筑加入建筑接壤关系表
+- 流程图示意:
+```flow
+st=>start: 建造建筑
+e=>end: 结束
+update_building_list=>operation: 维护建筑列表
+update_pos_belong=>operation: 维护领地pos归属
+update_building_contact=>operation: 维护接壤建筑列表
+update_building_adj=>operation: 维护联通建筑列表
+st->update_building_list->update_pos_belong->update_building_contact->update_building_adj->e
+```
+
+#### 完成建造
+- 对建筑领地范围所有地块，在地块归属列表中删除再重新添加，用于重新进行领地归属计算
+- 建筑完成建造时，由于领地归属规则，可能导致接壤的建造中的建筑领地发生变化，从而可能产生新的建筑联通和断开已有建造中的建筑联通。
+   - 遍历接壤建筑维护相邻关系,对于没有相邻关系的建筑判断联通,可能产生新连接
+   - 遍历接壤建造中建筑,每个建筑的和联通建筑再次判断联通，区域被砍可能断开和其他建筑的已有连接
+- 前面维护好归属，相邻关系后，继续进行有效性的维护
+   - 首先判断自己的有效性
+   - 若有效，则可能以自己为中心将有效性扩散出去使得原本无效建筑变有效，因此可通过广搜查找相邻己方无效建筑，变为有效即可
+- 维护隔断信息
+   - 由于建筑自身及接壤建筑可能发生领地变化，需要重新计算隔断以及隔断地块有效性
+   - 对于有效性发生变化的建筑,则需要重算其他有效变化建筑的接壤的有隔断建筑的隔断有效性
+- 流程图示意:
+```flow
+st=>start: 完成建造
+e=>end: 结束
+update_pos_belong=>operation: 维护领地pos归属
+update_building_contact=>operation: 遍历接壤建筑列表
+have_new_adj=>condition: 产生新联通?
+new_adj=>operation: 增加新连接
+
+update_building_contact2=>operation: 遍历接壤的建造中建筑列表
+have_del_adj=>condition: 已有联通断开?
+del_adj=>operation: 删除已有连接
+
+update_self_valid=>operation: 维护自身有效性
+is_valid=>condition: 自身有效 
+
+find_valid_building=>operation: 查找相邻己方无效建筑
+set_valid=>operation: 置为有效
+
+update_pos_cut=>operation: 维护自己和接壤建筑隔断信息
+update_other_pos_cut=>operation: 维护有效性变化建筑的接壤建筑隔断有效性
+is_valid2=>condition: 自身有效 
+
+st->update_pos_belong->update_building_contact->have_new_adj
+have_new_adj(yes)->update_building_contact
+have_new_adj(no)->update_building_contact2->have_del_adj
+have_del_adj(yes)->update_building_contact2
+have_del_adj(no)->update_self_valid->is_valid
+is_valid(yes)->find_valid_building->set_valid->update_pos_cut->is_valid2
+is_valid(no)->update_pos_cut->is_valid2
+is_valid2(yes)->update_other_pos_cut->e
+is_valid2(no)->e
+```
+
+#### 摧毁建筑
+- 对建筑领地范围所有地块，在地块归属列表中删除
+- 建筑摧毁时，由于领地归属规则，可能导致接壤的建筑领地发生变化，从而可能产生新的建筑联通
+   - 维护接壤建筑的相邻关系,接壤建筑之间通过联通判断，可能增加新连接
+   - 对于以上计算中新连接导致变有效的每个建筑，进行有效性扩散查找，把无效建筑变有效
+- 有效性建筑被摧毁，连接被断开，周边有效建筑可能发生有效性变化，因此需要对相邻己方的每个建筑进行以下处理
+   - 扩散查找相邻己方有效建筑
+   - 若途中找到了要塞，则终止操作，否则将找到的建筑都变为无效
+- 清理建筑的相邻关系数据
+- 清理建筑的接壤关系数据
+- 清理建筑列表和联盟建筑列表
+- 维护隔断信息
+   - 清理建筑的隔断数据
+   - 由于接壤建筑可能发生领地变化，需要重新计算隔断以及隔断地块有效性
+   - 若摧毁建筑是有效的，则重算其他有效变化建筑的接壤的有隔断建筑的隔断有效性
+- 流程图示意:
+```flow
+st=>start: 摧毁建筑
+e=>end: 结束
+update_pos_belong=>operation: 维护领地pos归属
+update_building_contact=>operation: 遍历接壤建筑列表
+have_new_adj=>condition: 接壤建筑之间产生新联通?
+new_adj=>operation: 增加新连接
+is_valid=>condition: 变有效？
+find_invalid_building=>operation: 查找相邻己方无效建筑
+set_valid=>operation: 置为有效
+
+self_valid=>condition: 自身有效?
+
+update_building_adj=>operation: 遍历联通建筑列表
+find_valid_building=>operation: 查找相邻己方有效建筑(非要赛)
+set_invalid=>operation: 置为无效
+
+update_adj=>operation: 维护相邻关系
+update_contact=>operation: 维护接壤关系
+update_building=>operation: 维护建筑列表
+
+clear_self_cut=>operation: 清理自身隔断信息
+update_pos_cut=>operation: 维护接壤建筑隔断信息
+update_other_pos_cut=>operation: 维护有效性变化建筑的接壤建筑隔断有效性
+is_valid2=>condition: 自身有效 
+
+st->update_pos_belong->update_building_contact->have_new_adj
+have_new_adj(yes)->new_adj->is_valid
+have_new_adj(no)->self_valid
+is_valid(yes)->find_invalid_building->set_valid->update_building_contact
+is_valid(no)->update_building_contact
+self_valid(yes)->update_building_adj->find_valid_building->set_invalid->update_adj
+self_valid(no)->update_adj
+update_adj->update_contact->update_building->clear_self_cut->update_pos_cut->is_valid2
+is_valid2(yes)->update_other_pos_cut->e
+is_valid2(no)->e
+```
+
+#### 占领建筑
+- 对于无主建筑
+   - 对于占领联盟判断建筑有效性
+   - 有效则需要维护其他建筑有效性,类似建造完成的情况,通过广搜查找相邻己方无效建筑，变为有效即可
+- 对于有主建筑
+   - 对于被占联盟
+      - 类似摧毁建筑情况,连接被断开，周边有效建筑可能发生有效性变化，因此需要对相邻己方的每个建筑进行以下处理
+         - 扩散查找相邻己方有效建筑
+         - 若途中找到了要塞，则终止操作，否则将找到的建筑都变为无效
+   - 对于占领联盟
+      - 首先判断自己的有效性
+      - 若有效，则可能以自己为中心将有效性扩散出去使得原本无效建筑变有效，因此可通过广搜查找相邻己方无效建筑，变为有效即可
+- 维护隔断信息
+   - 由于建筑联盟有效性变化，有可能有建筑变无效或有效
+   - 对于有效性发生变化的建筑,需要重算其他有效变化建筑的接壤的有隔断建筑的隔断有效性
+- 流程图示意:
+```flow
+st=>start: 占领建筑
+e=>end: 结束
+have_owner=>condition: 有主建筑
+update_self_valid=>operation: 维护自身有效性
+
+is_valid=>condition: 自身有效?
+find_valid_building=>operation: 查找相邻己方无效建筑
+set_valid=>operation: 置为有效
+
+update_contact_pos_cut=>operation: 维护有效性变化的建筑的接壤建筑隔断有效性
+
+destroy_valid_op=>operation: 被占联盟走摧毁建筑的有效性变化流程
+complete_valid_op=>operation: 占领联盟走建造完成的有效性变化流程
+
+st->have_owner
+have_owner(no)->update_self_valid->is_valid
+is_valid(yes)->find_valid_building->set_valid->update_contact_pos_cut->e
+is_valid(no)->update_contact_pos_cut->e
+
+have_owner(yes)->destroy_valid_op->complete_valid_op->update_contact_pos_cut->e
+```
+
+#### 资源矿刷新
+- 由于资源矿功能较为独立，拥有自己独立的锁，刷新也单独进行
+- 增加一个独立线程用于处理异步任务,对应接口如下
+```c++
+/// @brief 添加要异步执行的任务
+/// @param task 异步回调task
+/// @param name task名字
+/// @param delay_ms 执行任务延迟的毫秒时间
+TINT32 CAsyncProcess::AddAsyncTask(const AsyncTask &task, const std::string &name, TINT32 delay_ms = 0);
+```
+- 完成、占领、摧毁建筑时触发资源矿异步刷新,加入异步刷新任务
+- 执行刷新时,遍历资源矿，找出有效性或所属联盟发生变化的资源矿，进行刷新推送处理
+```c++
+//执行刷新代码
+CAsyncProcess::GetInstance()->AddAsyncTask([seq, this](){
+   this->DoUpdateAlResourceBuildingChange(seq);
+}, m_al_res_update_key, 1000);
+return 0;
+```
+
+### 对外主要接口设计
+```c++
+/// @brief 创建失落之地相关建筑
+TINT32 CreateLostBuilding(CBuildingInfo &building, TUINT32 seq = 0);
+
+/// @brief 完成建造联盟建筑
+TINT32 CompleteAlBuilding(TINT64 pos, EWildClass wild_class, TINT32 building_id, TINT32 time, TUINT32 seq = 0);
+
+/// @brief 摧毁联盟建筑并刷新资源地
+TINT32 DestroyAlBuilding(TINT64 pos, EWildClass wild_class, TINT32 building_id, TUINT32 seq = 0);
+
+/// @brief 占领建筑
+TINT32 OccupyBuilding(TINT32 ksid, TINT64 aid, TINT64 pos, EWildClass wild_class, TINT32 building_id, TUINT32 seq = 0);
+
+/// @brief 更新地块信息,对于失落之地建筑可能触发建筑完成和占领建筑
+TINT32 UpdateMapItem(const Json::Value &map_info, TUINT32 seq = 0);
+
+/// @brief 检查建筑联通
+TBOOL CheckBuildingLink(TINT64 aid, TINT64 tpos);
+
+/// @brief 检查指定联盟起始坐标到目标坐标的区域联通性
+TBOOL CheckProvinceLink(TINT64 aid, TINT64 spos, TINT64 tpos);
+
+/// @brief 检查是否可建造
+TBOOL CheckCanBuild(EWildClass wild_class, TINT64 aid, TINT64 pos, TINT32 size, TINT32 wild_size);
+```
+
+---

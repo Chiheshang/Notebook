@@ -1,0 +1,350 @@
+# 联盟礼物重构文档
+
+## 功能说明
+---
+- 游戏中通过iap等行为产生的对整个联盟所有成员有效的礼物，每个玩家都可以通过联盟领取获得对应奖励
+- 联盟有联盟礼物等级
+- 未领取展示过期倒计时，已领取礼物展示奖励和点数，已过期礼物展示奖励假数据，已删除礼物则不展示
+- 玩家可以拉取礼物和奖励记录，领取单个/多个礼物奖励，删除单个/多个礼物奖励
+
+## 问题描述
+---
+### 旧联盟礼物的实现方式
+- 旧联盟礼物共用alliance svr
+- 联盟礼物数据存储在联盟中
+- 个人礼物数据(礼物记录)存储在user gift中
+- 均使用player流程(基础耗时高)
+- 处理过程：从alliance svr拉数据-->处理-->更新到alliance svr
+
+### 旧联盟礼物存在的问题
+- 占用内存大
+  - alliance_svr的个人数据user gift中,al reward record单条数据包括了已领取和已删除记录，超最大数量或过期时才清理，并且所有记录存在一个json中，数据很大，满记录时超过16k
+
+- 返包大
+  - 对于客户端,除了必要的礼物列表和领取记录外,al gift reward还包含了未领取礼物数据用于客户端展示
+  - 逻辑服和数据服交互中,数据服返包数据包含了全量礼物和奖励记录,数据包太大
+
+- 命令字请求占比大，耗时高
+  - 相关cmd包括al_gift_open,al_gift_clear,al_gift_clear_all,al_gift_get,open_all_al_gift
+  - 以上5个cmd综合数量最高可以达到总请求数的20%
+  - cpu耗时高,login get 30ms左右,al_gift_open 50ms+,几个cmd都差不多(player流程基础耗时高+命令字耗时高)
+
+## 概要说明
+---
+### 整体目标
+- 减小个人单条礼物数据大小
+- 减小内部服务交互数据量
+- 减小和客户端交互数据量
+- 减少命令字耗时
+
+### 已知问题处理
+- 反包大问题
+  - 对于客户端,礼物列表和领取记录是必要的，未领取礼物数据可移除，客户端可自行读取配置展示
+  - 逻辑服和数据服反包大,可通过将逻辑做进数据服，直接计算，避免全量数据交互
+
+- 命令字请求占比大，耗时高问题
+  - 将命令字分散到其他服务，重做相关逻辑
+
+- alliance_svr的user gift中,al reward record单条数据过大导致占用内存大
+  - 将领取记录和清理记录数据拆分开
+  - 由于删除记录通常是连续大批的删除记录，并且删除记录除了标记礼物删除外没有其他用处，通过增加最小已删除礼物id标记，表示之前的礼物都被删除，大大减少删除记录的存储
+
+### 解决思路整理
+- 增加包括数据存储和逻辑处理的新服务
+  - 优化耗时
+  - 解决反包大问题
+
+- 将get命令字迁移到op_svr,改为仅登录拉取,之后新礼物走增量推送
+  - 优化耗时
+  - 压力从hu分散
+  - 减少al gift get请求量,交互数据量
+
+- 拆分al reward record记录，增加最小删除id记录
+  - 解决al reward record过大问题
+  - 减少内存占用 
+
+- 数据说明
+  - 对于玩家主动删除掉的礼物,记录最小可领的gift id
+    - 小于此gift id的认为玩家没有此礼物（已删除）
+    - 大于此gift id的，单独记录已删除的
+  - 对于已领取的礼物
+    - 极端情况下所有玩家不clear，存储和旧礼物一致，除了未领取礼物的记录
+    - 当前线上user gift record数据分析来看，大多数玩家在领取完之后会清理掉礼物
+    - 数据记录方式和旧礼物一致
+  - 对于礼物本身
+    - 数据记录和旧礼物一致
+
+- 考虑使用增量方式处理数据,仅在特定场景拉取全量
+  - 全量数据拉取
+    - 数据内容包括礼物列表和领取记录
+    - 时机为登录时,background时,断线重连时,aid发生变化时
+    - 走op svr转发，不再走hu_tcp
+	 - 客户端自行合并展示
+  - 后续增量数据为实时推送和增量反包
+  - 角标客户端自行计算
+
+  - 可减少网络交互数据量,优化耗时
+
+- 数据结构采用自定义结构
+  - 降低内存消耗
+  - 提高序列化、反序列化性能
+  - 提高拼反包效率
+
+- 不存储全量数据,按需拉取
+  - 降低内存消耗
+
+## 解决方案
+---
+### 新服务大体框架
+- 自定义数据结构
+- 数据非全量缓存,按需拉取,重启无需恢复
+- 反包支持pb
+- 支持推送pb
+- 支持获取联盟礼物数据、添加联盟礼物、删除联盟礼物记录、领取联盟礼物接口
+
+### 数据结构
+
+- 以下数据结构仅列出数据和必要接口,其他接口有所省略
+
+- 基础数据类型(类似tuple替代):
+```c++
+//基础数据类型
+class CBaseData
+{
+public:
+    CBaseData():m_seq(0), m_utime(0), m_is_deleted(FALSE) {}
+    virtual ~CBaseData() {}
+
+    TINT64 m_seq;
+    TINT64 m_utime;
+
+    TBOOL m_is_deleted;
+
+    virtual TINT32 OnSerialize(std::string &json) = 0;
+    virtual TINT32 OnSerialize(Json::Value &json) = 0;
+    virtual TINT32 OnDeserialize(const Json::Value &json) = 0;
+
+    TVOID RefreshSeqTime()
+    {
+        ++m_seq;
+        m_utime = CTimeUtils::GetCurTimeUs();
+    }
+};
+
+//联盟礼物数据
+class CAllianceGiftObj : public CBaseData
+{
+public:
+    TINT64 m_aid; //hash
+    TINT64 m_id; //range
+    TINT64 m_pack_id;
+    TINT64 m_gift_point;
+    TINT64 m_ctime;
+    string m_source; //来源
+};
+
+//联盟礼物状态
+class CAllianceGiftStat : public CBaseData
+{
+public:
+    TINT64 m_aid; //hash
+    TINT64 m_total_num;
+};
+
+struct SReward
+{
+    TINT32 m_type;
+    TINT32 m_id;
+    TINT32 m_num;
+};
+//个人联盟礼物记录
+class CAllianceGiftReward : public CBaseData
+{
+public:
+    TINT64 m_uid; //hash
+    //key:gift id
+    std::map<TINT64, std::vector<SReward> > m_data;
+};
+
+//个人联盟礼物删除记录
+class CAllianceGiftRewardDel : public CBaseData
+{
+public:
+    TINT64 m_uid; //hash
+
+    std::map<TINT64, TINT64> m_data;
+    TINT64 m_min_availability_gift_id; //最小可领的gift id
+};
+
+//个人联盟礼物状态
+class CUserGiftStat : public CBaseData
+{
+public:
+    TINT64 m_uid; //hash
+    TINT64 m_aid;
+};
+```
+
+- 基础数据结构(单个用户数据、联盟数据):
+```c++
+//个人礼物数据,包括删除记录,奖励记录以及礼物信息
+class CUserGift
+{
+public:
+   CUserGift(TINT64 uid);
+   TINT32 OnResponse(Json::Value &json); //拉取数据反包解析
+private:
+    CAllianceGiftRewardDel m_del_record;
+    CAllianceGiftReward m_reward_record;
+    CUserGiftStat m_user_gift_stat;
+    TINT64 m_uid;
+    TBOOL m_valid; //缓存有效性
+
+    RWlock m_rwlock;
+};
+
+typedef std::shared_ptr<CAllianceGiftObj> CAllianceGiftObjPtr;
+//联盟礼物数据,包括联盟所有礼物和联盟礼物信息
+class CAllianceGift
+{
+public:
+    CAllianceGift(TINT64 aid);
+    TINT32 OnResponse(Json::Value &json);
+private:
+    std::map<TINT64, CAllianceGiftObjPtr> m_gifts;
+
+    CAllianceGiftStat m_al_gift_stat;
+
+    TINT64 m_aid;
+    TBOOL m_valid;
+
+    RWlock m_rwlock;
+};
+```
+
+- 数据结构管理
+```c++
+typedef std::shared_ptr<CUserGift> CUserGiftPtr;
+//用户数据管理
+class CUserMgr : public CSingleton<CUserMgr>
+{
+public:
+    CUserGiftPtr GetUserGiftInfo(TINT64 uid);
+    TINT64 Size();
+    TINT64 Capacity();
+private:
+    Mutexlock m_mutex;
+    MemoryCache<TINT64, CUserGiftPtr> *m_data;
+};
+
+typedef std::shared_ptr<CAllianceGift> CAllianceGiftPtr;
+//联盟数据管理
+class CAllianceMgr : public CSingleton<CAllianceMgr>
+{
+public:
+    CAllianceGiftPtr GetAllianceGiftInfo(TINT64 aid);
+    TINT64 Size();
+    TINT64 Capacity();
+private:
+    Mutexlock m_mutex;
+    MemoryCache<TINT64, CAllianceGiftPtr> *m_data;
+};
+```
+
+- 最小可领取礼物的计算方法(代码有所删减,仅贴上必要部分)
+```c++
+TINT64 min_gift_id = user_gift->m_del_record.m_min_availability_gift_id;
+auto &al_gifts = alliance_gift->GetAlGiftsNoLock();
+auto &del_record = user_gift->m_del_record;
+//查找第一个不在删除记录的联盟礼物
+auto iter = al_gifts.find(min_gift_id);
+if (iter == al_gifts.end())
+   iter = al_gifts.begin();
+for (; iter != al_gifts.end(); ++iter)
+{
+   if (iter->first < min_gift_id || del_record.m_data.count(iter->first) > 0)
+         continue;
+   else
+         break;
+}
+//设置最小可用礼物id
+if (iter != al_gifts.end())
+{
+   del_record.m_min_availability_gift_id = iter->first;
+}
+else
+{
+   //所有联盟礼物被清,给一个假的最小礼物id,最后一个id+1
+   del_record.m_min_availability_gift_id = al_gifts.rbegin()->first + 1;
+}
+
+//清理小于最小可用礼物id的删除记录
+for (auto iter = del_record.m_data.begin(); iter != del_record.m_data.end();)
+{
+   auto gift_id = iter->first;
+   if (gift_id <= user_gift->m_del_record.m_min_availability_gift_id)
+   {
+         iter = del_record.m_data.erase(iter);
+   }
+   else
+   {
+         ++iter;
+   }
+}
+del_record.RefreshSeqTime();
+```
+
+### 反包和推送
+- 支持json,pb反包
+- 全量数据反包采用protobuf减小包大小
+- 推送采用protobuf,直接推送到usm
+
+### 命令字流程
+
+- 通用命令字流程:
+   - 预处理
+      - 是否有联盟数据缓存,没有则组装redis请求
+      - 是否有个人数据缓存,没有则组装redis请求
+   - 拉取数据(根据预处理结果按需)
+      - 发送拉取数据请求
+      - 处理数据反包,加入缓存
+   - 处理命令字流程
+   - 更新数据请求进磁盘队列(实际在数据结构中已经处理)
+
+- 支持的主要命令字处理
+  - get_al_gift_info
+    - 全量数据拉取礼物列表和领取记录
+	 - 走op svr转发，不再走hu_tcp
+  - add_al_gift
+    - logic直接把礼物id与数量同步到新al gift svr
+	 - id由al gift svr生成,al gift svr 维护id
+	 - al gift svr将新礼物实时推送给客户端
+  - del_al_gift
+    - 支持删除单个/批量删除
+    - al gift svr删除指定礼物记录
+	 - al gift svr 根据已领取列表进行更新最小礼物id与已删除列表
+	 - 后台处理成功，返回ret = 0 给客户端，客户端自行清理本地
+  - claim_al_gift
+    - 支持领取单个/多个
+    - al gift svr领取指定礼物
+	 - 根据奖励组装反包给客户端,包括增加的礼物点数
+
+- 涉及外部服务的命令字流程图示意:
+```mermaid
+graph BR;
+  hu-->al_gift_open_new-->alliance_gift_svr;
+  hu-->al_gift_clear_new-->alliance_gift_svr;
+  hu-->al_gift_clear_all_new-->alliance_gift_svr;
+  hu-->al_gift_open_all_new-->alliance_gift_svr;
+  op_svr-->al_gift_get_new-->alliance_gift_svr_;
+```
+
+## 重构结果
+
+- 耗时情况
+  - al_gift_get_new耗时降到op_svr 1ms级别
+  - 其他几个命令字在hu对比旧联盟礼物,均减少了10ms耗时
+- 内存占用减少
+  - 极端情况1w联盟每联盟400礼物，80w个玩家均领满400礼物且不清理，占用内存36g+
+
+---
