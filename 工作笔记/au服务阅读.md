@@ -6,7 +6,22 @@
 
 
 
+通用流程：
 
+1. CProcedureAction::InitProcess
+
+   au通过4个关键参数：dwTableType、mainclass、secondclass、status来凭借一个64位的long类型数字，从而取出对应的cmdinfo。
+
+2. CDataProcedure::GetData
+
+   从action_get线程中每隔50ms从虚拟节点node_type=2/7/59中拉数据。取出stActionTable，封装到session进行处理
+
+3. CProcedureAction::HandleBefore
+
+   原user和targetuser都要走`AuCommonHandleBefore`，计算buff，tips，狂化等
+
+4. CProcedureBase::ProcessCmd，重载
+5. CDataProcedure::UpdateData，下游节点node_type=22/17/56
 
 #### 采集资源
 
@@ -24,7 +39,9 @@
 
    生成action：`CTpMarch_action* CProcessMarch::GenMarchAction`
 
-   ​	结构体：`SActionMarchParam stMarchParam`，填充：`source user，source city id，source alliance id，target user（这里看是不是野怪军队），target map，march time，dragon，需要消耗资源的，将string转为vector，再转为json然后计算消耗资源，troop（更新剩余军队），如果是侦察，设置侦察等级`
+   `action_id=(ddwUid << 32) + udwSeq`
+
+   ​	结构体：`SActionMarchParam stMarchParam`，填充：`source user，source city id，source alliance id，target user（这里看是不是野怪军队），target map，march time，dragon`，需要消耗资源的，将string转为vector，再转为json然后计算消耗资源，troop（更新剩余军队），如果是侦察，设置侦察等级
 
    ​	根据结构体`stMarchParam`生成`tuple ptbMarchAction`：`CActionBase::AddMarchAction` tuple填充数据
 
@@ -128,15 +145,12 @@ zk线程填充m_setNewNode虚拟节点列表。
 命令流程：
 
 1. `CProcessMarchOccupy::PreSuidActionDataCustomized`
-   1. 预拉取数据
+   
+   预拉取数据
 
-​		如果是铁矿石头木头粮食银币资源地：清空action，生成action：`GenProto_QueryActionByAid`，生成数据拉取请求：
+​		如果是铁矿石头木头粮食银币资源地：清空action，生成action：`GenProto_QueryActionByAid`，生成数据拉取请求：downnode=22，设置uid，sid，aid等，拉取数据
 
-​			downnode=22，设置uid，sid，aid等，拉取数据
-
-​	 	如果是超级王座-军备库：清空action，生成action：GenProto_QueryActionBySpTa，生成数据拉取请求：
-
-​			downnode=22，设置uid，sid，aid等，拉取数据
+​		如果是超级王座-军备库：清空action，生成action：GenProto_QueryActionBySpTa，生成数据拉取请求：downnode=22，设置uid，sid，aid等，拉取数据
 
 2. `CProcessActionMarch::ProcessMarchOccupy`
 
@@ -150,8 +164,8 @@ zk线程填充m_setNewNode虚拟节点列表。
 
 流程：
 
-	1. 校验
-	1. 占据：
+1. 校验
+2. 占据：
 
 按照目的地是资源还是铁矿石头木头粮食银币资源地，
 
@@ -173,4 +187,16 @@ zk线程填充m_setNewNode虚拟节点列表。
 
 7. `CPushDataBase::PushDataUid_KeyRefresh`推送消息
 
-   
+占据资源：
+
+hu命令字：
+
+​	get_all_march、map_get_new、get_all_title_info、task_operate、get_all_al_fortress_info、**march_occupy**、item_buy_and_use、msg_get、map_get_new、action_recall
+
+au命令字：
+
+main=2,sec_raw=13,sec_res=13,status_raw=0：CProcessMarchOccupy
+
+main=2,sec_raw=13,sec_res=13,status_raw=4：CProcessMarchLoadingRes
+
+main=2,sec_raw=13,sec_res=13,status_raw=2：CProcessMarchReturn
