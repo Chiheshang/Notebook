@@ -10,7 +10,7 @@
 
 1. CProcedureAction::InitProcess
 
-   au通过4个关键参数：dwTableType、mainclass、secondclass、status来凭借一个64位的long类型数字，从而取出对应的cmdinfo。
+   0au通过4个关键参数：dwTableType、mainclass、secondclass、status来凭借一个64位的long类型数字，从而取出对应的cmdinfo。
 
 2. CDataProcedure::GetData
 
