@@ -1,4 +1,4 @@
-
+ 
 
 # shell工具
 
@@ -99,13 +99,13 @@ grep "cmd_stat:" stat_log.1 |awk -F ":" '{if($7 in cmd) cmd[$7]=cmd[$7]+$8;else 
     filename:passwd, linenumber:1,columns:7
     filename:passwd, linenumber:2,columns:7
     filename:passwd, linenumber:3,columns:7
-
+	
 	 ```
 	+ 切割IP
 	```C
 	[atguigu@hadoop102 datas]$ ifconfig eth0 | grep "inet addr" | awk -F: '{print $2}' | awk -F " " '{print $1}' 
 	192.168.1.102
-	 ```
+	```
 	+ 查询sed.txt中空行所在的行号
 	```C
 	[atguigu@hadoop102 datas]$ awk '/^$/{print NR}' sed.txt 
