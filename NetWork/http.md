@@ -149,3 +149,29 @@ Range: bytes =5001-10000
 方通信连接的应用程序。通过ssl等方法进行通信
 
 ​		隧道不会解析HTTP请求。
+
+#### HTTP首部
+
+1. 请求报文：
+
+    HTTP 报文由方法、URI、HTTP 版本、HTTP 首部字段
+
+等部分构成。
+
+![image-20220118130658912](http.assets/image-20220118130658912.png)
+
+2. 响应报文：
+
+    HTTP 报文由 HTTP 版本、状态码（数字和原因短语）、HTTP 首部字段 3部分构成。
+
+![image-20220118130809839](http.assets/image-20220118130809839.png)
+
+首部字段是构成 HTTP 报文的要素之一，格式：
+
+```http
+首部字段名: 字段值
+eg:
+Content-Type: text/html
+Keep-Alive: timeout=15, max=100
+```
+
